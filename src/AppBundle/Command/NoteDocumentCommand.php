@@ -5,15 +5,13 @@ namespace AppBundle\Command;
 use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\Filesystem\Filesystem;
-use AppBundle\Entity\Diploma;
 
 class NoteDocumentCommand extends ContainerAwareCommand
 {
     public $output;
+    const VERSION = '0.2.1';
 
     protected function configure()
     {
@@ -43,7 +41,7 @@ class NoteDocumentCommand extends ContainerAwareCommand
             return;
         }
         else{
-            $text = utf8_decode(file_get_contents($diploma->getPath()));
+            $text = file_get_contents($diploma->getPath());
             if($text != FALSE) {
                 $output->writeln("Starting to parse document " . $id);
                 $text = preg_replace('/(<\/p>\n|<\/p>\z)/', '', $text);
@@ -56,6 +54,7 @@ class NoteDocumentCommand extends ContainerAwareCommand
                 $current_article_no = 0;
                 $current_chapter_no = "";
                 $current_section_no = "";
+                $current_title_no = "";
                 $current_appendum_no = "";
                 $current_project = "";
                 $final = '<?xml version="1.0" encoding="UTF-8"?>';
@@ -63,12 +62,13 @@ class NoteDocumentCommand extends ContainerAwareCommand
                 $new_article = false;
                 $new_section = false;
                 $new_chapter = false;
+                $new_title = false;
                 $new_appendum = 0;
                 $title=true;
                 foreach ($text as $line) {
                     if($line != "<ref/>") {
                         if($title){                                                                                      // does not process first line, instead add header
-                            $final = $final . "\n".'<document lastModification="'.time().'" parserVersion="0.2.0">';
+                            $final = $final . "\n".'<documento ultimaModificacao="'.time().'">';
                             $title = false;
                         }
                         else if(preg_match('/\Ade [0-9]{1,2} de [a-zA-Z]+/',$line)){}                                        // does not include header date
@@ -76,15 +76,19 @@ class NoteDocumentCommand extends ContainerAwareCommand
                             $final = $final . 'title="' . $line . '">';
                             $new_article = false;
                         }
-                        else if($new_section == true){                                                                       // adding title to the article tag
+                        else if($new_section == true){                                                                       // adding title to the section tag
                             $final = $final . 'title="' . $line . '">';
                             $new_section = false;
                         }
-                        else if($new_chapter == true){                                                                       // adding title to the article tag
+                        else if($new_chapter == true){                                                                       // adding title to the chapter tag
                             $final = $final . 'title="' . $line . '">';
                             $new_chapter = false;
                         }
-                        else if($new_appendum == 1) {                                                                       // adding title to the article tag
+                        else if($new_title == true){                                                                       // adding title to the title tag
+                            $final = $final . 'title="' . $line . '">';
+                            $new_title = false;
+                        }
+                        else if($new_appendum == 1) {                                                                       // adding title to the appendum tag
                             $final = $final.'title="'.$line.'">';
                             $new_appendum = 0;
                         }
@@ -147,7 +151,7 @@ class NoteDocumentCommand extends ContainerAwareCommand
                                 }
                                 $current_chapter_no = $temp[1];
                             }
-                            else if (!$inside_quotes && preg_match('/\APreâmbulo\z/i', $line)) {                       // detected "CAPITULO"
+                            else if (!$inside_quotes && preg_match('/\APreâmbulo\z/i', $line)) {                       // detected "Preâmbulo"
                                 $line = '<capitulo no="0">';
                                 if ($current_article_no != 0) {
                                     $final = $final."\n</artigo>";
@@ -162,6 +166,27 @@ class NoteDocumentCommand extends ContainerAwareCommand
                                 }
                                 $current_chapter_no = "0";
                             }
+                            else if (!$inside_quotes && preg_match('/\ATÍTULO [A-Z]+\z/i', $line)) {                  // detected "TÍTULO"
+                                $temp = preg_split('/ /', $line);
+                                $line = '<titulo no="'.$temp[1].'" ';
+                                $new_title = true;
+                                if ($current_article_no != 0) {
+                                    $final = $final."\n</artigo>";
+                                    $current_article_no = 0;
+                                }
+                                if ($current_section_no != "") {
+                                    $final = $final."\n</seccao>";
+                                    $current_section_no = "";
+                                }
+                                if ($current_chapter_no != "") {
+                                    $final = $final."\n</capitulo>";
+                                    $current_chapter_no = "";
+                                }
+                                if ($current_title_no != "") {
+                                    $final = $final."\n</titulo>";
+                                }
+                                $current_title_no = $temp[1];
+                            }
                             else if(!$inside_quotes && preg_match('/\A(Aprovada em )?[0-9]{2} de [a-zA-Z]+ de [0-9]{4}/', $line)) {    //detected final date
                                 if ($current_article_no != 0) {
                                     $final = $final."\n</artigo>";
@@ -175,9 +200,12 @@ class NoteDocumentCommand extends ContainerAwareCommand
                                     $final = $final."\n</capitulo>";
                                     $current_chapter_no = "";
                                 }
+                                if ($current_title_no != "") {
+                                    $final = $final."\n</titulo>";
+                                    $current_title_no = "";
+                                }
                             }
                             else if(!$inside_quotes && preg_match('/\AANEXO( [A-Z]+)?\z/', $line)) {                              //detected anexo
-
                                 $new_appendum = 2;
                                 if ($current_article_no != 0) {
                                     $final = $final."\n</artigo>";
@@ -190,6 +218,10 @@ class NoteDocumentCommand extends ContainerAwareCommand
                                 if ($current_chapter_no != "") {
                                     $final = $final."\n</capitulo>";
                                     $current_chapter_no = "";
+                                }
+                                if ($current_title_no != "") {
+                                    $final = $final."\n</titulo>";
+                                    $current_title_no = "";
                                 }
                                 if ($current_appendum_no != "") {
                                     $final = $final."\n</anexo>";
@@ -221,6 +253,10 @@ class NoteDocumentCommand extends ContainerAwareCommand
                                     $final = $final."\n</capitulo>";
                                     $current_chapter_no = "";
                                 }
+                                if ($current_title_no != "") {
+                                    $final = $final."\n</titulo>";
+                                    $current_title_no = "";
+                                }
                                 if ($current_appendum_no != "") {
                                     $final = $final."\n</anexo>";
                                 }
@@ -241,9 +277,18 @@ class NoteDocumentCommand extends ContainerAwareCommand
                 if($current_article_no!=0) $final = $final . "\n" . "</artigo>";
                 if($current_section_no!="") $final = $final . "\n" . "</seccao>";
                 if($current_chapter_no!="") $final = $final . "\n" . "</capitulo>";
+                if($current_title_no!="") $final = $final . "\n" . "</titulo>";
                 if($current_appendum_no!="") $final = $final . "\n" . "</anexo>";
-                $final = $final . "\n</document>";
-                $fs->dumpFile('bin/docs/parsed/'.$id.'.xml',utf8_encode($final));
+                $final = $final . "\n</documento>";
+
+                $doc = new \DOMDocument('1.0','UTF-8');
+                $doc->preserveWhiteSpace=true;
+
+                $doc->loadXML(utf8_encode($final));
+                $doc->version = $this->VERSION;
+                $doc->formatOutput=true;
+
+                $fs->dumpFile('bin/docs/parsed/'.$id.'.xml',$doc->saveXML());
 
                 $output->writeln("Successfully parsed document " . $id);
             }

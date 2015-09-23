@@ -5,7 +5,6 @@ namespace AppBundle\Command;
 use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\Filesystem\Filesystem;
@@ -164,7 +163,7 @@ class DownloadDocumentsCommand extends ContainerAwareCommand
     }
 
     protected function getType($crawler){
-        return utf8_decode($crawler->filterXPath('//div/ul/li[@class="tipoDiploma.tipo"]/span/following-sibling::text()')->text());
+        return $crawler->filterXPath('//div/ul/li[@class="tipoDiploma.tipo"]/span/following-sibling::text()')->text();
     }
 
     protected function getCode($crawler){
@@ -172,11 +171,11 @@ class DownloadDocumentsCommand extends ContainerAwareCommand
     }
 
     protected function getEntity($crawler){
-        return utf8_decode($crawler->filterXPath('//div/ul/li[@class="emissor.designacao"]/span/following-sibling::text()')->text());
+        return $crawler->filterXPath('//div/ul/li[@class="emissor.designacao"]/span/following-sibling::text()')->text();
     }
 
     protected function getSummary($crawler){
-        return utf8_decode($crawler->filterXPath('//div/ul/li[@class="formatedSumarioWithLinks"]/p')->text());
+        return $crawler->filterXPath('//div/ul/li[@class="formatedSumarioWithLinks"]/p')->text();
     }
 
     protected function getText($crawler){
